@@ -1,0 +1,12 @@
+[submodule "flashinfer-v0.4.1"]
+	path = flashinfer-v0.4.1
+	url = https://github.com/yangzy723/flashinfer.git
+	branch = v0.4.1-dev
+[submodule "pytorch-v2.8.0"]
+	path = pytorch-v2.8.0
+	url = https://github.com/yangzy723/pytorch.git
+	branch = v2.8.0-dev
+[submodule "sglang-v0.5.4"]
+	path = sglang-v0.5.4
+	url = https://github.com/yangzy723/sglang.git
+	branch = v0.5.4-dev
