@@ -259,13 +259,14 @@ Time	Total Time	Instances	Avg	Med	Min	Max	StdDev	Name
 [rank0]:     return F.linear(x, layer.weight, bias)
 [rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+PATH: Rebuilt-PyTorch/pytorch-v2.8.0/aten/src/ATen/cuda/CUDABlas.cpp
+splitKreduce_kernel 这个 kernel 的执行似乎总和一个矩阵乘法相关，即 矩阵乘 -> splitKreduce_kernel，那是否一起拦截即可？
+即在 cublasGemmEx 内部实现中，nvjet_tst_128x128_64x6_2x1_v_bz_splitK_TNT 和 void cublasLt::splitKreduce_kernel总是在一起
 
 
-Time	Total Time	Instances	    Name
-3.1%	58.927 ms	960	            void cutlass::device_kernel<flash::enable_sm90_or_later<flash::FlashAttnFwdSm90<flash::CollectiveMainloopFwdSm90<(int)2, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cute::tuple<cute::C<(int)128>, cute::C<(int)128>, cute::C<(int)128>>, (int)128, cutlass::bfloat16_t, float, cutlass::arch::Sm90, (bool)1, (bool)0, (bool)0, (bool)1, (bool)1, (bool)0, (bool)0, (bool)1, (bool)1, (bool)1, (bool)1, (bool)0, cutlass::bfloat16_t>, flash::CollectiveEpilogueFwd<cute::tuple<cute::C<(int)128>, cute::C<(int)128>, cute::C<(int)128>>, cute::tuple<cute::C<(int)1>, cute::C<(int)1>, cute::C<(int)1>>, cutlass::bfloat16_t, cutlass::arch::Sm90, (int)256, (bool)1, (bool)1, (bool)1, (bool)0>, flash::VarlenDynamicPersistentTileScheduler<(int)128, (int)128, (int)256, (int)128, (bool)1, (bool)1, (bool)1, (bool)1, (bool)1, (bool)1>>>>(T1::Params)
-Time	Total Time	Instances	    Name
-0.3%	5.076 ms	1024	        void flash::prepare_varlen_num_blocks_kernel<(int)4, (bool)1>(int, int, int, const int *, const int *, const int *, const int *, const int *, const int *, int, int, int, int, int, cutlass::FastDivmod, cutlass::FastDivmod, int *, int *, int *, int *, int *, bool, bool, bool, int)
-Time	Total Time	Instances	    Name
-0.2%	3.365 ms	960	3.505 μs    void cublasLt::splitKreduce_kernel<(int)32, (int)16, int, float, __nv_bfloat16, float, __nv_bfloat16, (bool)0, float, __nv_bfloat16, __nv_bfloat16, (bool)1, (bool)0, (bool)0, (bool)0>(cublasLt::cublasSplitKParams<T6>, const T4 *, const T10 *, T9 *, T5 *, const T6 *, const T6 *, const T11 *, const T4 *, T11 *, void *, long, T6 *, int *, T6 *, T6 *, const T6 *, const T6 *, const T6 *, const T6 *, const T6 *)
+PATH: Rebuilt-PyTorch/sglang-v0.5.4/python/sglang/srt/layers/attention/flashattention_backend.py
+flash::prepare_varlen_num_blocks_kernel, cutlass::device_kernel<flash::FlashAttnFwdSm90...>, cutlass::device_kernel<flash::FlashAttnFwdCombine...>
+这三个 kernels 也是在 flash_attn_with_kvcache 方法内部实现中由 torch.ops.sgl_kernel.fwd.default 依次启动的
+
 Time	Total Time	Instances	    Name
 0.0%	42.368 μs	30	            triton_poi_fused_clamp_sub_0
