@@ -14,6 +14,8 @@
 #include <chrono>
 #include <iomanip>
 #include <ctime>
+#include <map>
+#include <algorithm>
 
 #include "IPCProtocol.h"
 
@@ -24,6 +26,47 @@ std::ofstream globalLogFile;
 long long connectionCount = 0; 
 
 std::atomic<long long> globalKernelId(0);
+std::mutex statsMutex;
+std::map<std::string, long long> currentLogKernelStats;
+
+// 注意：调用此函数时，调用者必须已经持有了 logMutex
+void flushStatsAndReset() {
+    std::lock_guard<std::mutex> lock(statsMutex); // 锁住统计数据
+
+    if (!globalLogFile.is_open()) return;
+
+    globalLogFile << "\n-------------------------------------------------------\n";
+    globalLogFile << "      Kernel Statistics for this Log File\n";
+    globalLogFile << "-------------------------------------------------------\n";
+
+    if (currentLogKernelStats.empty()) {
+        globalLogFile << "No kernels recorded in this session.\n";
+    } else {
+        using PairType = std::pair<std::string, long long>;
+        std::vector<PairType> sortedStats(currentLogKernelStats.begin(), currentLogKernelStats.end());
+
+        std::sort(sortedStats.begin(), sortedStats.end(), 
+            [](const PairType& a, const PairType& b) {
+                return a.second > b.second;
+            });
+
+        globalLogFile << std::left << std::setw(45) << "Kernel Name" << " | " << "Count" << "\n";
+        globalLogFile << "----------------------------------------------|--------\n";
+        
+        long long total = 0;
+        for (const auto& item : sortedStats) {
+            globalLogFile << std::left << std::setw(45) << item.first << " | " << item.second << "\n";
+            total += item.second;
+        }
+        globalLogFile << "----------------------------------------------|--------\n";
+        globalLogFile << std::left << std::setw(45) << "TOTAL" << " | " << total << "\n";
+    }
+    
+    globalLogFile << "-------------------------------------------------------\n\n";
+    globalLogFile.flush();
+
+    currentLogKernelStats.clear();
+}
 
 // ---------------- 日志辅助函数 ----------------
 
@@ -36,14 +79,19 @@ std::string getCurrentTimeStrForFile() {
     return ss.str();
 }
 
+// 注意：调用此函数时，必须在外部持有 logMutex，防止多线程同时写入/切换
 void rotateLogFile() {
+    // 1. 如果有旧文件，先写入统计信息，再关闭
     if (globalLogFile.is_open()) {
+        flushStatsAndReset();
         globalLogFile.close();
-        std::cout << "[Main] 上一轮日志已关闭。" << std::endl;
+        std::cout << "[Main] 上一轮日志统计已写入并关闭。" << std::endl;
     }
+
+    // 2. 创建新文件
     std::string filename = "logs/" + getCurrentTimeStrForFile() + ".log";
     globalLogFile.open(filename, std::ios::out | std::ios::app);
-    
+    globalKernelId.store(0);
     if (!globalLogFile.is_open()) {
         std::cerr << "[Main] 致命错误: 无法创建日志文件 " << filename << std::endl;
     } else {
@@ -56,9 +104,12 @@ void writeLog(const std::string& message) {
     if (globalLogFile.is_open()) {
         globalLogFile << message << std::endl;
         globalLogFile.flush(); 
-    } else {
-        std::cout << "[Log Lost]: " << message << std::endl;
     }
+}
+
+void recordKernelStat(const std::string& kernelType) {
+    std::lock_guard<std::mutex> lock(statsMutex);
+    currentLogKernelStats[kernelType]++;
 }
 
 // ---------------- 业务逻辑 ----------------
@@ -74,7 +125,6 @@ std::vector<std::string> split(const std::string& s, char delimiter) {
 }
 
 std::pair<bool, std::string> makeDecision(const std::string& kernelType) {
-    // 可以在这里根据 kernelType 做具体策略
     return {true, "OK"};
 }
 
@@ -102,12 +152,10 @@ void serviceClient(int clientSocket) {
         }
 
         std::string message(buffer, bytesRead);
-        // 清理换行符
         while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) {
             message.pop_back();
         }
 
-        // 客户端格式: kernel_type|req_id|source
         auto parts = split(message, '|');
         if (parts.size() < 3) {
             writeLog("[Scheduler] 格式错误 (" + message + ")，断开。");
@@ -115,25 +163,22 @@ void serviceClient(int clientSocket) {
             break;
         }
         
-        // 1. 获取各个部分
-        std::string kernelType = parts[0];     // e.g., "GemmInternalCublas"
-        std::string reqId = parts[1];        // e.g., "req_5"
-        std::string source = parts[2];       // e.g., "pytorch" or "slang"
+        std::string kernelType = parts[0];     
+        std::string reqId = parts[1];        
+        std::string source = parts[2];       
 
-        // 2. 增加全局 Kernel ID
         long long currentId = ++globalKernelId;
 
-        // 3. 记录日志：Kernel {id} arrived: kernel_name|req_id from slang/pytorch
+        recordKernelStat(kernelType);
+
         ss.str("");
         ss << "Kernel " << currentId << " arrived: " << kernelType << "|" << reqId << " from " << source;
         writeLog(ss.str());
 
-        // 4. 决策逻辑
         auto decision = makeDecision(kernelType);
         bool allowed = decision.first;
         std::string reason = decision.second;
 
-        // 5. 发送响应 (协议: reqId|allowed|reason)
         std::string response = createResponseMessage(reqId, allowed, reason);
         if (send(clientSocket, response.c_str(), response.length(), 0) < 0) {
              writeLog("[Scheduler] 发送响应失败，连接断开。");
@@ -185,7 +230,11 @@ int main() {
         }
         
         {
+            // 在检查是否需要轮转日志前，必须持有 logMutex。
+            // 这样可以确保在轮转（写入统计、关闭旧文件）的过程中，
+            // 没有任何工作线程能通过 writeLog 写入日志，避免数据竞态或写入已关闭的文件。
             std::lock_guard<std::mutex> lock(logMutex);
+            
             if (connectionCount % 2 == 0) {
                 rotateLogFile();
             }
@@ -196,7 +245,13 @@ int main() {
         clientThread.detach(); 
     }
 
-    if(globalLogFile.is_open()) globalLogFile.close();
+    // 程序正常退出前的清理
+    if(globalLogFile.is_open()) {
+        std::lock_guard<std::mutex> lock(logMutex);
+        flushStatsAndReset();
+        globalLogFile.close();
+    }
+    
     close(server_fd);
     return 0;
 }
