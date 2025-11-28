@@ -50,7 +50,7 @@ void flushStatsAndReset() {
                 return a.second > b.second;
             });
 
-        globalLogFile << std::left << std::setw(45) << "Kernel Name" << " | " << "Count" << "\n";
+        globalLogFile << std::left << std::setw(50) << "Kernel Name" << " | " << "Count" << "\n";
         globalLogFile << "----------------------------------------------|--------\n";
         
         long long total = 0;
