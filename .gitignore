@@ -1,4 +1,6 @@
 scheduler
 result.jsonl
-*.nsys-rep
 logs/
+
+*.nsys-rep
+*.png
