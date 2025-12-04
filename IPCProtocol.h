@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <iostream>
+#include <chrono>
 
 // ============================================================
 //  常量定义
@@ -121,38 +122,71 @@ struct SPSCQueue {
         return "";
     }
 
-    // 阻塞式读取（带超时）
+    // 阻塞式读取（带超时）- 优化版本：忙等待+退避
     bool pop_blocking(char* out_data, size_t max_len, int timeout_ms = -1) {
-        int elapsed = 0;
+        int spin_count = 0;
+        auto start = std::chrono::steady_clock::now();
+        
         while (true) {
             if (try_pop(out_data, max_len)) {
                 return true;
             }
             
-            if (timeout_ms >= 0 && elapsed >= timeout_ms) {
-                return false;  // 超时
+            if (timeout_ms >= 0) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+                if (elapsed_ms >= timeout_ms) {
+                    return false;  // 超时
+                }
             }
             
-            // 短暂休眠，避免忙等待
-            usleep(100);  // 100 微秒
-            elapsed += 1;  // 粗略计时
+            // 忙等待策略：前 1000 次快速轮询
+            if (spin_count < 1000) {
+                __asm__ __volatile__("pause" ::: "memory");
+                spin_count++;
+            } else if (spin_count < 10000) {
+                if (spin_count % 100 == 0) {
+                    usleep(1);  // 1 微秒
+                }
+                spin_count++;
+            } else {
+                usleep(10);  // 10 微秒
+                spin_count = 0;
+            }
         }
     }
 
-    // 阻塞式写入（带超时）
+    // 阻塞式写入（带超时）- 优化版本：忙等待+退避
     bool push_blocking(const char* data, size_t len, int timeout_ms = -1) {
-        int elapsed = 0;
+        int spin_count = 0;
+        auto start = std::chrono::steady_clock::now();
+        
         while (true) {
             if (try_push(data, len)) {
                 return true;
             }
             
-            if (timeout_ms >= 0 && elapsed >= timeout_ms) {
-                return false;  // 超时
+            if (timeout_ms >= 0) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+                if (elapsed_ms >= timeout_ms) {
+                    return false;  // 超时
+                }
             }
             
-            usleep(100);
-            elapsed += 1;
+            // 忙等待策略：前 1000 次快速轮询
+            if (spin_count < 1000) {
+                __asm__ __volatile__("pause" ::: "memory");
+                spin_count++;
+            } else if (spin_count < 10000) {
+                if (spin_count % 100 == 0) {
+                    usleep(1);  // 1 微秒
+                }
+                spin_count++;
+            } else {
+                usleep(10);  // 10 微秒
+                spin_count = 0;
+            }
         }
     }
 

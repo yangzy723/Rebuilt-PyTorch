@@ -165,20 +165,43 @@ void serviceClientChannel(ClientChannel* channel, const std::string& clientName)
     char buffer[SPSC_MSG_SIZE];
 
     while (g_running.load(std::memory_order_acquire)) {
-        // 非阻塞尝试读取请求
-        if (!channel->request_queue.try_pop(buffer, SPSC_MSG_SIZE)) {
-            // 队列为空，短暂休眠后继续
-            usleep(100);  // 100 微秒
-            continue;
+        // 非阻塞尝试读取请求，使用忙等待+退避策略
+        int spin_count = 0;
+        while (!channel->request_queue.try_pop(buffer, SPSC_MSG_SIZE)) {
+            if (!g_running.load(std::memory_order_acquire)) {
+                break;
+            }
+            // 忙等待：前 1000 次快速轮询，然后逐渐增加延迟
+            if (spin_count < 1000) {
+                // CPU pause hint，减少功耗
+                __asm__ __volatile__("pause" ::: "memory");
+                spin_count++;
+            } else if (spin_count < 10000) {
+                // 每 100 次检查一次
+                if (spin_count % 100 == 0) {
+                    usleep(1);  // 1 微秒
+                }
+                spin_count++;
+            } else {
+                // 长时间等待，使用更长的休眠
+                usleep(10);  // 10 微秒
+                spin_count = 0;  // 重置计数器
+            }
         }
-
-        std::string message(buffer);
         
-        // 去除尾部换行符
-        while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) {
-            message.pop_back();
+        if (!g_running.load(std::memory_order_acquire)) {
+            break;
         }
 
+        // 直接处理 buffer，避免不必要的字符串拷贝
+        size_t msg_len = strlen(buffer);
+        // 去除尾部换行符
+        while (msg_len > 0 && (buffer[msg_len - 1] == '\n' || buffer[msg_len - 1] == '\r')) {
+            buffer[msg_len - 1] = '\0';
+            msg_len--;
+        }
+        
+        std::string message(buffer, msg_len);
         auto parts = split(message, '|');
         if (parts.size() < 3) {
             writeLog("[Scheduler] 格式错误 (" + message + ")");
@@ -193,9 +216,12 @@ void serviceClientChannel(ClientChannel* channel, const std::string& clientName)
 
         recordKernelStat(kernelType);
 
-        ss.str("");
-        ss << "Kernel " << currentId << " arrived: " << kernelType << "|" << reqId << " from " << source;
-        writeLog(ss.str());
+        // 减少日志写入频率：每 100 个内核记录一次，或关键事件
+        if (currentId % 100 == 0 || currentId <= 10) {
+            ss.str("");
+            ss << "Kernel " << currentId << " arrived: " << kernelType << "|" << reqId << " from " << source;
+            writeLog(ss.str());
+        }
 
         auto decision = makeDecision(kernelType);
         bool allowed = decision.first;
