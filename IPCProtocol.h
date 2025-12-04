@@ -122,70 +122,52 @@ struct SPSCQueue {
         return "";
     }
 
-    // 阻塞式读取（带超时）- 优化版本：忙等待+退避
+    // 阻塞式读取（带超时）- 高性能版本：纯忙等待
     bool pop_blocking(char* out_data, size_t max_len, int timeout_ms = -1) {
-        int spin_count = 0;
-        auto start = std::chrono::steady_clock::now();
-        
-        while (true) {
-            if (try_pop(out_data, max_len)) {
-                return true;
+        if (timeout_ms < 0) {
+            // 无超时，纯忙等待（最高性能）
+            while (!try_pop(out_data, max_len)) {
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            if (timeout_ms >= 0) {
+            return true;
+        } else {
+            // 有超时
+            auto start = std::chrono::steady_clock::now();
+            while (true) {
+                if (try_pop(out_data, max_len)) {
+                    return true;
+                }
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
                 if (elapsed_ms >= timeout_ms) {
-                    return false;  // 超时
+                    return false;
                 }
-            }
-            
-            // 忙等待策略：前 1000 次快速轮询
-            if (spin_count < 1000) {
                 __asm__ __volatile__("pause" ::: "memory");
-                spin_count++;
-            } else if (spin_count < 10000) {
-                if (spin_count % 100 == 0) {
-                    usleep(1);  // 1 微秒
-                }
-                spin_count++;
-            } else {
-                usleep(10);  // 10 微秒
-                spin_count = 0;
             }
         }
     }
 
-    // 阻塞式写入（带超时）- 优化版本：忙等待+退避
+    // 阻塞式写入（带超时）- 高性能版本：纯忙等待
     bool push_blocking(const char* data, size_t len, int timeout_ms = -1) {
-        int spin_count = 0;
-        auto start = std::chrono::steady_clock::now();
-        
-        while (true) {
-            if (try_push(data, len)) {
-                return true;
+        if (timeout_ms < 0) {
+            // 无超时，纯忙等待（最高性能）
+            while (!try_push(data, len)) {
+                __asm__ __volatile__("pause" ::: "memory");
             }
-            
-            if (timeout_ms >= 0) {
+            return true;
+        } else {
+            // 有超时
+            auto start = std::chrono::steady_clock::now();
+            while (true) {
+                if (try_push(data, len)) {
+                    return true;
+                }
                 auto now = std::chrono::steady_clock::now();
                 auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
                 if (elapsed_ms >= timeout_ms) {
-                    return false;  // 超时
+                    return false;
                 }
-            }
-            
-            // 忙等待策略：前 1000 次快速轮询
-            if (spin_count < 1000) {
                 __asm__ __volatile__("pause" ::: "memory");
-                spin_count++;
-            } else if (spin_count < 10000) {
-                if (spin_count % 100 == 0) {
-                    usleep(1);  // 1 微秒
-                }
-                spin_count++;
-            } else {
-                usleep(10);  // 10 微秒
-                spin_count = 0;
             }
         }
     }
