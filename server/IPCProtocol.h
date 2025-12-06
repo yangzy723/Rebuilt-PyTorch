@@ -31,8 +31,11 @@ constexpr size_t CACHE_LINE_SIZE = 64;          // CPU 缓存行大小，用于�
 //  消息构建函数（保持兼容）
 // ============================================================
 
-static inline std::string createRequestMessage(const std::string& id, const std::string& type) {
-    return type + "|" + id + "|pytorch\n";
+static inline std::string createRequestMessage(const std::string& id, const std::string& type, const std::string& unique_id = "") {
+    if (unique_id.empty()) {
+        return type + "|" + id + "|pytorch\n";
+    }
+    return type + "|" + id + "|pytorch|" + unique_id + "\n";
 }
 
 static inline std::string createResponseMessage(const std::string& id, bool allowed, const std::string& reason) {

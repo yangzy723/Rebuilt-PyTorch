@@ -210,7 +210,8 @@ void serviceClientChannel(ClientChannel* channel, const std::string& clientName)
         
         std::string kernelType = parts[0];     
         std::string reqId = parts[1];        
-        std::string source = parts[2];       
+        std::string source = parts[2];
+        std::string uniqueId = (parts.size() >= 4) ? parts[3] : "";  // 兼容旧协议（可能没有 unique_id）       
 
         long long currentId = ++globalKernelId;
 
@@ -220,6 +221,9 @@ void serviceClientChannel(ClientChannel* channel, const std::string& clientName)
         if (currentId % 100 == 0 || currentId <= 10) {
             ss.str("");
             ss << "Kernel " << currentId << " arrived: " << kernelType << "|" << reqId << " from " << source;
+            if (!uniqueId.empty()) {
+                ss << " (UNIQUE_ID: " << uniqueId << ")";
+            }
             writeLog(ss.str());
         }
 
