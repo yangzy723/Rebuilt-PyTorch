@@ -1,5 +1,7 @@
 scheduler
 result.jsonl
-logs/
+
+*.log
 *.json
+*.csv
 *.nsys-rep

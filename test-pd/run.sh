@@ -1,58 +1,62 @@
 #!/bin/bash
 
-# 请求数量配置
-REQ_COUNT=32
+# ================= 配置 =================
+COUNTS=(16 32 64 128 256)
+REPS=3
+RESULT_DIR="results"
+# =======================================
 
 echo "========================================"
 echo "      LLM Inference Benchmark Tool      "
+echo "      (Multi-Batch & 3x Repetitions)    "
 echo "========================================"
 
-# 清理旧数据
-rm -f res_*.json
+# 1. 准备环境
+rm -rf $RESULT_DIR
+mkdir -p $RESULT_DIR
+
+# 2. 开始循环测试
+for C in "${COUNTS[@]}"; do
+    echo ""
+    echo "########################################"
+    echo "   Testing Request Count: $C"
+    echo "########################################"
+
+    for ((r=1; r<=REPS; r++)); do
+        echo "   --- Repetition $r / $REPS ---"
+        
+        # 定义文件名
+        FILE_PREFIX="${RESULT_DIR}/res_c${C}_r${r}"
+
+        # ----------------------------------------------
+        # 阶段 1: 串行基准测试 (Serial)
+        # ----------------------------------------------
+        echo "       [Phase 1] Serial Mode..."
+        python prefill_client.py --count $C --output "${FILE_PREFIX}_serial_prefill.json" > /dev/null 2>&1
+        sleep 1
+        python decode_client.py --count $C --output "${FILE_PREFIX}_serial_decode.json" > /dev/null 2>&1
+        
+        # ----------------------------------------------
+        # 阶段 2: 并行干扰测试 (Parallel)
+        # ----------------------------------------------
+        echo "       [Phase 2] Parallel Mode..."
+        sleep 2 # Cool down
+
+        # 后台运行
+        python prefill_client.py --count $C --output "${FILE_PREFIX}_parallel_prefill.json" > /dev/null 2>&1 &
+        PID_P=$!
+        
+        python decode_client.py --count $C --output "${FILE_PREFIX}_parallel_decode.json" > /dev/null 2>&1 &
+        PID_D=$!
+
+        wait $PID_P $PID_D
+        echo "       Done."
+    done
+done
 
 # ----------------------------------------------
-# 阶段 1: 串行基准测试 (Serial Baseline)
+# 阶段 3: 生成聚合报告
 # ----------------------------------------------
 echo ""
-echo ">>> [Phase 1] Running SERIAL Mode (Baseline)..."
-echo "    Running Prefill..."
-python prefill_client.py --count $REQ_COUNT --output res_serial_prefill.json
-echo "    Prefill Done. Sleeping 2s..."
-sleep 2
-
-echo "    Running Decode..."
-python decode_client.py --count $REQ_COUNT --output res_serial_decode.json
-echo "    Decode Done."
-
-# ----------------------------------------------
-# 阶段 2: 并行干扰测试 (Parallel Interference)
-# ----------------------------------------------
-echo ""
-echo ">>> [Phase 2] Running PARALLEL Mode (Interference)..."
-echo "    Sleeping 3s to cool down GPU..."
-sleep 3
-
-echo "    Launching BOTH Prefill and Decode simultaneously..."
-
-# start_time=$(date +%s%N)
-
-# 后台运行 (&)
-python prefill_client.py --count $REQ_COUNT --output res_parallel_prefill.json &
-PID_P=$!
-
-python decode_client.py --count $REQ_COUNT --output res_parallel_decode.json &
-PID_D=$!
-
-echo "    Jobs launched (PIDs: $PID_P, $PID_D). Waiting for completion..."
-wait $PID_P $PID_D
-
-# end_time=$(date +%s%N)
-# duration=$((($end_time - $start_time)/1000000))
-echo "    Parallel run finished."
-
-# ----------------------------------------------
-# 阶段 3: 生成报告
-# ----------------------------------------------
-echo ""
-echo ">>> Generating Analysis Report..."
+echo ">>> Generating Final Analysis Report..."
 python analyze_results.py
