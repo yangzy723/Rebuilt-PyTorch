@@ -44,7 +44,6 @@ python -m pip install --no-build-isolation -e . -v --no-deps
 # python -m flashinfer.aot
 # python -m build --no-isolation --wheel -o ../build/
 ```
-
 参考：
 - https://docs.flashinfer.ai/installation.html
 - https://www.cnblogs.com/iLex/p/19036981
@@ -56,16 +55,21 @@ pip install --upgrade pip
 # 这个只是在安装 python 包，对 python 代码的修改通过以下更新生效
 python -m pip install -e "python"
 pip uninstall torch
-```
 
-若修改了 flashinfer 等第三方库的代码，请务必注意 sgl-kernel/ 下 CMakeLists.txt 的第三方库路径，以及是否需要重新编译 sgl-kerenl/
-
-```shell
+# 若修改了 flashinfer 等第三方库的代码，请务必注意 sgl-kernel/ 下 CMakeLists.txt 的第三方库路径，以及是否需要重新编译 sgl-kerenl/
 export Torch_DIR=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")/Torch
 ```
 
+---
+
 ## Run
 ```shell
+# 启动拦截服务端
+cd server
+g++ scheduler.cpp -o scheduler
+./scheduler
+
+# 启动推理客户端
 export CUDA_VISIBLE_DEVICES=1
 python -m sglang.bench_one_batch --model-path /data/datasets/models-hf/Llama-3.1-8B-Instruct/ --batch-size 64 --input-len 512 --mem-fraction-static 0.6 --disable-cuda-graph
 
@@ -86,30 +90,44 @@ nsys profile \
   --disable-cuda-graph
 ```
 
-## Tips
-- 编译`sglang`时使用最新版本（3.13）的 Python 疑似会出现找不到 Rust 编译器的问题
-    - Python 3.11
-- H200 最低支持的 CUDA 版本为 12.4，不支持 gcc-13/g++-13，需要手动软链接为gcc-12
-    - 如果使用 conda，方法为：
-    - ls /usr/bin | grep gcc
-    - cd $(dirname $(which python))
-    - ln -s /usr/bin/gcc-12 gcc
-    - ln -s /usr/bin/g++-12 g++
-- 更改 pytorch 编译时需要的 CUDA 版本
-    - build/CMakeCache.txt -> CMAKE_CUDA_COMPILER:STRING=/usr/local/cuda-12.9/bin/nvcc
-- 自己编译`pytorch 2.8.0`后运行`sglang`，可能需要一个对应版本的`torchvision`，但是`pip`会检查`torchvision`的依赖是否存在（官方的），不存在会帮你下 pytorch
-    - pip install torchvision==0.23.0 --no-deps
-- flashinfer show-config 返回：Module registration failed: No module named 'nvidia.nvshmem'
-    - ❌ Module registration failed: No module named 'nvidia.nvshmem'
-    - pip install nvidia-nvshmem-cu12
-- https://github.com/sgl-project/sglang/issues/8661
+## PD Test
+```shell
+# 开启 MPS
+export CUDA_VISIBLE_DEVICES=0
+nvidia-cuda-mps-control -d
+
+# 启动拦截服务端
+cd server
+g++ scheduler.cpp -o scheduler
+./scheduler
+
+# New Terminal, Prefill Node
+export UNIQUE_ID=1
+python -m sglang.launch_server \
+   --model-path /data/datasets/models-hf/Llama-3.1-8B-Instruct/ \
+   --port 30001 \
+   --host 0.0.0.0 \
+   --mem-fraction-static 0.4
+
+# New Terminal, Decode Node
+export UNIQUE_ID=2
+python -m sglang.launch_server \
+   --model-path /data/datasets/models-hf/Llama-3.1-8B-Instruct/ \
+   --port 30002 \
+   --host 0.0.0.0 \
+   --mem-fraction-static 0.4
+
+# 启动压力测试程序
+cd test-pd
+bash run.sh
+```
 
 ## Versions
 
 |模块名称       | 版本  |
-|--------------|--------|
+|--------------|------|
 |cuda          |12.9  |
 |python        |3.11  |
-|flashinfer    |0.4.1 |
 |torch         |2.8.0 |
 |sglang        |0.5.4 |
+|flashinfer    |0.4.1 |
