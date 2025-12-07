@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
+#include <string_view>
 
 // ============================================================
 //  常量定义
@@ -32,8 +34,22 @@ constexpr size_t CACHE_LINE_SIZE = 64;          // CPU 缓存行大小，用于�
 #define SHM_NAME_SGLANG  "/kernel_scheduler_sglang"
 
 // 注册通道（客户端在此注册自己的通道名）
-#define SHM_NAME_REGISTRY "/kernel_scheduler_registry"
 constexpr size_t MAX_REGISTERED_CLIENTS = 64;  // 最多支持的客户端数量
+
+// ============================================================
+//  用户名后缀，避免不同用户的共享内存冲突
+// ============================================================
+inline std::string get_user_suffix() {
+    const char* u = std::getenv("USER");
+    if (u && *u) {
+        return std::string("_") + u;
+    }
+    return "_nouser";
+}
+
+inline std::string get_registry_name() {
+    return std::string("/kernel_scheduler_registry") + get_user_suffix();
+}
 
 // ============================================================
 //  消息构建函数（保持兼容）
@@ -379,9 +395,10 @@ public:
             flags |= O_CREAT;
         }
         
-        int fd = shm_open(SHM_NAME_REGISTRY, flags, 0666);
+        std::string reg_name = get_registry_name();
+        int fd = shm_open(reg_name.c_str(), flags, 0666);
         if (fd == -1) {
-            std::cerr << "[SHM] 打开注册表共享内存失败: " << SHM_NAME_REGISTRY << std::endl;
+            std::cerr << "[SHM] 打开注册表共享内存失败: " << reg_name << std::endl;
             return nullptr;
         }
 
@@ -420,6 +437,7 @@ public:
     
     // 删除注册表共享内存
     static void unlink_registry() {
-        shm_unlink(SHM_NAME_REGISTRY);
+        std::string reg_name = get_registry_name();
+        shm_unlink(reg_name.c_str());
     }
 };

@@ -491,7 +491,7 @@ bool initSharedMemory() {
         std::cerr << "[Scheduler] 创建注册表共享内存失败" << std::endl;
         return false;
     }
-    std::cout << "[Scheduler] 注册表共享内存已创建: " << SHM_NAME_REGISTRY << std::endl;
+    std::cout << "[Scheduler] 注册表共享内存已创建: " << get_registry_name() << std::endl;
 
     // 标记调度器已准备好（客户端可以开始注册）
     g_registry->scheduler_ready.store(true, std::memory_order_release);
@@ -549,7 +549,7 @@ int main() {
     }
 
     std::cout << "[Scheduler] 服务端运行中 (动态多客户端模式)..." << std::endl;
-    std::cout << "[Scheduler] 注册表: " << SHM_NAME_REGISTRY << std::endl;
+    std::cout << "[Scheduler] 注册表: " << get_registry_name() << std::endl;
     std::cout << "[Scheduler] 等待客户端注册..." << std::endl;
 
     // 启动注册表扫描线程
