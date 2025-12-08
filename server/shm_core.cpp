@@ -81,7 +81,7 @@ bool ShmChannel::sendBlocking(const std::string& msg) {
     // 简单的超时机制 (例如 5秒)
     int attempts = 0;
     while (!spsc_try_push(msg.c_str(), msg.length())) {
-        if (attempts++ > 5000000) return false; // Approx check
+        if (attempts++ > 5000000) return false;
         __asm__ __volatile__("pause" ::: "memory");
     }
     return true;

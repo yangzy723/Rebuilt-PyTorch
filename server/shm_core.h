@@ -20,7 +20,7 @@ public:
     std::string getType() const override { return clientType; }
     std::string getName() const override { return shmName; }
 
-    // 额外功能：清理
+    // 清理
     void unlink();
 
 private:

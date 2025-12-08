@@ -20,7 +20,6 @@ void Scheduler::stop() {
 
 size_t Scheduler::getActiveCount() {
     std::lock_guard<std::mutex> lock(threadsMutex);
-    // 清理已结束的线程 (简单的清理逻辑，实际可能需要更复杂的线程池)
     return workers.size(); 
 }
 
@@ -44,8 +43,6 @@ void Scheduler::onNewClient(std::unique_ptr<IChannel> channel) {
     std::lock_guard<std::mutex> lock(threadsMutex);
     // 转移 channel 所有权给线程
     workers.emplace_back(&Scheduler::clientHandler, this, std::move(channel));
-    // 可以在这里 detach，或者定期在 main join，这里为了演示简单直接 detach 或放入 vector
-    // 注意：std::thread 移动语义
 }
 
 void Scheduler::clientHandler(std::unique_ptr<IChannel> channel) {
@@ -65,19 +62,17 @@ void Scheduler::clientHandler(std::unique_ptr<IChannel> channel) {
     while (running && channel->isConnected()) {
         // 阻塞接收 (底层实现忙等待)
         if (!channel->recvBlocking(message)) {
-             // 超时或断开
              continue; 
         }
 
         // 简单的协议解析
-        // 去除尾部换行符
         while (!message.empty() && (message.back() == '\n' || message.back() == '\r')) {
             message.pop_back();
         }
 
         auto parts = split(message, '|');
         if (parts.size() < 3) {
-            continue; // 格式错误忽略
+            continue;
         }
 
         std::string kernelType = parts[0];     
