@@ -32,6 +32,20 @@ void Logger::write(const std::string& message) {
     }
 }
 
+void Logger::write(const std::string& message, const std::string& channelKey) {
+    std::lock_guard<std::mutex> lock(logMutex);
+    if (globalLogFile.is_open()) {
+        globalLogFile << message << std::endl;
+        globalLogFile.flush();
+    }
+
+    auto& channelFile = getChannelLog(channelKey);
+    if (channelFile.is_open()) {
+        channelFile << message << std::endl;
+        channelFile.flush();
+    }
+}
+
 void Logger::recordKernelStat(const std::string& kernelType) {
     std::lock_guard<std::mutex> lock(statsMutex);
     currentLogKernelStats[kernelType]++;
@@ -115,7 +129,10 @@ void Logger::rotateLogFile() {
         std::cout << "[Logger] Rotated log file." << std::endl;
     }
 
-    std::string filename = "logs/" + getCurrentTimeStrForFile() + ".log";
+    currentLogSuffix = getCurrentTimeStrForFile();
+    closeChannelLogs();
+
+    std::string filename = "logs/" + currentLogSuffix + ".log";
     globalLogFile.open(filename, std::ios::out | std::ios::app);
     
     if (!globalLogFile.is_open()) {
@@ -123,6 +140,42 @@ void Logger::rotateLogFile() {
     } else {
         std::cout << "[Logger] New log file: " << filename << std::endl;
     }
+}
+
+std::string Logger::sanitizeKey(const std::string& key) {
+    std::string sanitized = key;
+    for (auto& ch : sanitized) {
+        if (ch == '/' || ch == '\\' || ch == ' ') ch = '_';
+    }
+    if (sanitized.empty()) sanitized = "unknown";
+    return sanitized;
+}
+
+std::ofstream& Logger::getChannelLog(const std::string& channelKey) {
+    std::string safeKey = sanitizeKey(channelKey);
+    auto it = channelLogFiles.find(safeKey);
+    if (it == channelLogFiles.end() || !it->second.is_open()) {
+        // 若尚未初始化时间戳，确保有后缀
+        if (currentLogSuffix.empty()) currentLogSuffix = getCurrentTimeStrForFile();
+        std::string filename = "logs/" + currentLogSuffix + "_" + safeKey + ".log";
+        std::ofstream ofs(filename, std::ios::out | std::ios::app);
+        if (!ofs.is_open()) {
+            std::cerr << "[Logger] Fatal: Cannot create " << filename << std::endl;
+            channelLogFiles[safeKey] = std::ofstream(); // 占位，避免反复尝试
+        } else {
+            std::cout << "[Logger] New channel log file: " << filename << std::endl;
+            channelLogFiles[safeKey] = std::move(ofs);
+        }
+        it = channelLogFiles.find(safeKey);
+    }
+    return it->second;
+}
+
+void Logger::closeChannelLogs() {
+    for (auto& item : channelLogFiles) {
+        if (item.second.is_open()) item.second.close();
+    }
+    channelLogFiles.clear();
 }
 
 Logger::~Logger() {

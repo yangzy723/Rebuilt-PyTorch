@@ -48,12 +48,13 @@ void Scheduler::onNewClient(std::unique_ptr<IChannel> channel) {
 void Scheduler::clientHandler(std::unique_ptr<IChannel> channel) {
     long long sessionId = Logger::instance().incrementConnectionCount();
     std::string clientKey = channel->getType() + ":" + channel->getId();
+    std::string logKey = channel->getName();
     Logger::instance().recordConnectionStat(clientKey);
 
     std::stringstream ss;
     ss << "[Scheduler] Session #" << sessionId << " started for " 
        << clientKey << " (SHM: " << channel->getName() << ")";
-    Logger::instance().write(ss.str());
+    Logger::instance().write(ss.str(), logKey);
     std::cout << ss.str() << std::endl;
 
     channel->setReady();
@@ -85,7 +86,7 @@ void Scheduler::clientHandler(std::unique_ptr<IChannel> channel) {
         if (currentId % 100 == 0 || currentId <= 10) {
             ss.str("");
             ss << "Kernel " << currentId << ": " << kernelType;
-            Logger::instance().write(ss.str());
+            Logger::instance().write(ss.str(), logKey);
         }
 
         // 决策
@@ -95,12 +96,12 @@ void Scheduler::clientHandler(std::unique_ptr<IChannel> channel) {
         std::string response = reqId + "|" + (decision.first ? "1" : "0") + "|" + decision.second + "\n";
         
         if (!channel->sendBlocking(response)) {
-            Logger::instance().write("[Scheduler] Send timeout for " + clientKey);
+            Logger::instance().write("[Scheduler] Send timeout for " + clientKey, logKey);
         }
     }
 
     ss.str("");
     ss << "[Scheduler] Session #" << sessionId << " ended (" << clientKey << ")";
-    Logger::instance().write(ss.str());
+    Logger::instance().write(ss.str(), logKey);
     std::cout << ss.str() << std::endl;
 }
