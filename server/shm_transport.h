@@ -247,13 +247,13 @@ public:
         
         int fd = shm_open(name.c_str(), flags, 0666);
         if (fd == -1) {
-            std::cerr << "[ShmTransport] 打开共享内存失败: " << name << std::endl;
+            std::cerr << "[ShmTransport] Failed to open shared memory: " << name << std::endl;
             return nullptr;
         }
 
         if (isCreator) {
             if (ftruncate(fd, sizeof(ChannelData)) == -1) {
-                std::cerr << "[ShmTransport] 设置共享内存大小失败" << std::endl;
+                std::cerr << "[ShmTransport] Failed to set shared memory size" << std::endl;
                 close(fd);
                 return nullptr;
             }
@@ -264,7 +264,7 @@ public:
         close(fd);
 
         if (ptr == MAP_FAILED) {
-            std::cerr << "[ShmTransport] 映射共享内存失败" << std::endl;
+            std::cerr << "[ShmTransport] Failed to map shared memory" << std::endl;
             return nullptr;
         }
 
@@ -327,13 +327,13 @@ public:
         std::string reg_name = getRegistryName();
         int fd = shm_open(reg_name.c_str(), flags, 0666);
         if (fd == -1) {
-            std::cerr << "[ShmTransport] 打开注册表共享内存失败: " << reg_name << std::endl;
+            std::cerr << "[ShmTransport] Failed to open registry shared memory: " << reg_name << std::endl;
             return nullptr;
         }
 
         if (isCreator) {
             if (ftruncate(fd, sizeof(RegistryData)) == -1) {
-                std::cerr << "[ShmTransport] 设置注册表共享内存大小失败" << std::endl;
+                std::cerr << "[ShmTransport] Failed to set registry shared memory size" << std::endl;
                 close(fd);
                 return nullptr;
             }
@@ -344,7 +344,7 @@ public:
         close(fd);
 
         if (ptr == MAP_FAILED) {
-            std::cerr << "[ShmTransport] 映射注册表共享内存失败" << std::endl;
+            std::cerr << "[ShmTransport] Failed to map registry shared memory" << std::endl;
             return nullptr;
         }
 
@@ -543,7 +543,7 @@ public:
         // 1. 打开注册表
         registry_ = factory_.createRegistry(false);
         if (!registry_) {
-            std::cerr << "[ShmClientConnection] 无法打开注册表，调度器可能未启动" << std::endl;
+            std::cerr << "[ShmClientConnection] Failed to open registry, scheduler may not be running" << std::endl;
             return false;
         }
 
@@ -552,7 +552,7 @@ public:
         const int interval = 100;
         while (!registry_->isServerReady()) {
             if (timeout_ms >= 0 && waited >= timeout_ms) {
-                std::cerr << "[ShmClientConnection] 等待调度器超时" << std::endl;
+                std::cerr << "[ShmClientConnection] Timeout waiting for scheduler to be ready" << std::endl;
                 registry_.reset();
                 return false;
             }
@@ -563,7 +563,7 @@ public:
         // 3. 创建通道
         channel_ = factory_.createChannel(channelName_, true);
         if (!channel_) {
-            std::cerr << "[ShmClientConnection] 无法创建通道: " << channelName_ << std::endl;
+            std::cerr << "[ShmClientConnection] Failed to create channel: " << channelName_ << std::endl;
             registry_.reset();
             return false;
         }
@@ -572,7 +572,7 @@ public:
         std::string uid = uniqueId_.empty() ? std::to_string(getpid()) : uniqueId_;
         registrySlot_ = registry_->registerClient(channelName_, clientType_, uid, getpid());
         if (registrySlot_ < 0) {
-            std::cerr << "[ShmClientConnection] 注册表已满" << std::endl;
+            std::cerr << "[ShmClientConnection] Registry is full" << std::endl;
             factory_.destroyChannel(channelName_);
             channel_.reset();
             registry_.reset();
@@ -586,7 +586,7 @@ public:
         waited = 0;
         while (!channel_->isServerReady()) {
             if (timeout_ms >= 0 && waited >= timeout_ms * 2) {
-                std::cerr << "[ShmClientConnection] 等待服务端超时" << std::endl;
+                std::cerr << "[ShmClientConnection] Timeout waiting for server to be ready" << std::endl;
                 registry_->unregisterClient(registrySlot_);
                 factory_.destroyChannel(channelName_);
                 channel_.reset();
