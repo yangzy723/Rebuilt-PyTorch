@@ -10,7 +10,7 @@ conda activate <CONDA_NAME>
 
 ```shell
 # code
-git clone https://github.com/yangzy723/Rebuilt-PyTorch.git
+git clone https://github.com/yangzy723/FlexMPS.git
 cd Rebuilt-PyTorch
 git submodule sync
 git submodule update --init --recursive
