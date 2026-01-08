@@ -11,7 +11,7 @@ conda activate <CONDA_NAME>
 ```shell
 # code
 git clone https://github.com/yangzy723/FlexMPS.git
-cd Rebuilt-PyTorch
+cd FlexMPS
 git submodule sync
 git submodule update --init --recursive
 ```
@@ -19,8 +19,8 @@ git submodule update --init --recursive
 ```shell
 # Init
 # https://github.com/pytorch/pytorch/tree/v2.8.0
-# https://github.com/flashinfer-ai/flashinfer/tree/v0.4.1
 # https://github.com/sgl-project/sglang/tree/v0.5.4
+# https://github.com/flashinfer-ai/flashinfer/tree/v0.4.1
 ```
 ---
 
@@ -43,7 +43,7 @@ export CMAKE_PREFIX_PATH="${CONDA_PREFIX:-'$(dirname $(which conda))/../'}:${CMA
 python setup.py develop
 ```
 
-## FlashInfer
+## FlashInfer (Useless)
 ```shell
 cd flashinfer-v0.4.1
 python -c "import torch; print(torch.__version__, torch.version.cuda)"
